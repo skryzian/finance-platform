@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Finance Platform",
+    "slug": "finance-platform",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "packagerOpts": {
+      "sourceExts": ["js", "jsx", "ts", "tsx"]
+    },
+    "android": {
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_SMS", "POST_NOTIFICATIONS"],
+      "package": "com.financeplatform.mobile"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "extra": {
+      "apiUrl": "http://10.0.2.2:8000"
+    }
+  }
+}
