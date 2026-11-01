@@ -54,6 +54,7 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+    command: npm run dev
     container_name: finance-web
     restart: unless-stopped
     env_file:

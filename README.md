@@ -52,6 +52,12 @@ This monorepo contains the Phase 1 foundation for a global personal finance plat
 5. API docs:
    `http://localhost:8000/docs`
 
+## Render deployment
+
+`render.yaml` defines a production web service, API service, and private managed PostgreSQL database. The web image is built for production; Docker Compose overrides its command to retain local development mode.
+
+The Blueprint uses paid Render plans. This local file alone does not provision anything, but creating or syncing it in Render provisions billable services and a database; review Render's current pricing and configure a spending limit first. Automatic deploys from later commits are disabled. The API and web service names determine the configured `.onrender.com` URLs, so update `CORS_ORIGINS` and `NEXT_PUBLIC_API_URL` if Render assigns different URLs.
+
 ## Phase 1 validation
 
 - `POST /auth/register` creates a user
