@@ -2,7 +2,7 @@ services:
   - type: web
     name: finance-platform-api
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
@@ -31,7 +31,7 @@ services:
   - type: web
     name: finance-platform-web
     runtime: docker
-    plan: starter
+    plan: free
     region: oregon
     dockerContext: ./web
     dockerfilePath: ./web/Dockerfile
@@ -39,11 +39,13 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://finance-platform-api.onrender.com
+      - key: PORT
+        value: "3000"
 
 databases:
   - name: finance-platform-db
     databaseName: finance_db
     user: finance_user
-    plan: basic-256mb
+    plan: free
     region: oregon
     ipAllowList: []

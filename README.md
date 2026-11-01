@@ -52,11 +52,13 @@ This monorepo contains the Phase 1 foundation for a global personal finance plat
 5. API docs:
    `http://localhost:8000/docs`
 
-## Render deployment
+## Render demo deployment
 
-`render.yaml` defines a production web service, API service, and private managed PostgreSQL database. The web image is built for production; Docker Compose overrides its command to retain local development mode.
+`render.yaml` defines a free-tier demo with web, API, and managed PostgreSQL services. The web image is built for production; Docker Compose overrides its command to retain local development mode. This infrastructure is for demos and testing only, not production use with real financial data.
 
-The Blueprint uses paid Render plans. This local file alone does not provision anything, but creating or syncing it in Render provisions billable services and a database; review Render's current pricing and configure a spending limit first. Automatic deploys from later commits are disabled. The API and web service names determine the configured `.onrender.com` URLs, so update `CORS_ORIGINS` and `NEXT_PUBLIC_API_URL` if Render assigns different URLs.
+Render Free web services spin down after 15 minutes without traffic and can take about a minute to start again. Their local files are ephemeral, and the workspace's free instance hours are shared across services. The free PostgreSQL database is limited to 1 GB, has no backups, and expires 30 days after creation. It becomes inaccessible then and is deleted, with its data, after a further 14-day upgrade grace period. Export any demo data you want to keep before expiration. See [Render's free instance limitations](https://render.com/docs/free). Do not use this setup for production or real financial data.
+
+Creating or syncing the Blueprint provisions resources in Render. Automatic deploys from later commits are disabled. The API and web service names determine the configured `.onrender.com` URLs, so update `CORS_ORIGINS` and `NEXT_PUBLIC_API_URL` if Render assigns different URLs.
 
 ## Phase 1 validation
 
