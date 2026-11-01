@@ -38,7 +38,7 @@ services:
     autoDeploy: false
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://finance-platform-api.onrender.com
+        value: https://finance-platform-api-mhvb.onrender.com
       - key: PORT
         value: "3000"
 

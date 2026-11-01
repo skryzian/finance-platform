@@ -58,7 +58,7 @@ This monorepo contains the Phase 1 foundation for a global personal finance plat
 
 Render Free web services spin down after 15 minutes without traffic and can take about a minute to start again. Their local files are ephemeral, and the workspace's free instance hours are shared across services. The free PostgreSQL database is limited to 1 GB, has no backups, and expires 30 days after creation. It becomes inaccessible then and is deleted, with its data, after a further 14-day upgrade grace period. Export any demo data you want to keep before expiration. See [Render's free instance limitations](https://render.com/docs/free). Do not use this setup for production or real financial data.
 
-Creating or syncing the Blueprint provisions resources in Render. Automatic deploys from later commits are disabled. The API and web service names determine the configured `.onrender.com` URLs, so update `CORS_ORIGINS` and `NEXT_PUBLIC_API_URL` if Render assigns different URLs.
+Creating or syncing the Blueprint provisions resources in Render. Automatic deploys from later commits are disabled. Render may add a suffix to service URLs; keep `CORS_ORIGINS` and `NEXT_PUBLIC_API_URL` aligned with the actual API and web URLs shown in the dashboard.
 
 ## Phase 1 validation
 
