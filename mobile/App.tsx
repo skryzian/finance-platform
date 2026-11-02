@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SQLiteProvider } from 'expo-sqlite';
 import { FinancialCopilot } from './components/FinancialCopilot';
+import { OfflineSyncPanel } from './components/OfflineSyncPanel';
 import { initializeLocalDatabase } from './src/database/localDatabase';
 
 export default function App() {
@@ -20,20 +21,20 @@ function Dashboard() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Finance Platform</Text>
           <Text style={styles.title}>Mobile Dashboard</Text>
-          <Text style={styles.storageStatus}>Encrypted local storage ready</Text>
+          <Text style={styles.storageStatus}>Encrypted storage is configured; native SQLCipher verification requires a development build. Sign in to synchronize your ledger.</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Net worth</Text>
-          <Text style={styles.value}>KES 1,245,000</Text>
-          <Text style={styles.change}>+12.4% this month</Text>
+          <Text style={styles.note}>No financial accounts or verified balances are connected.</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Detected transactions</Text>
-          <Text style={styles.note}>Pending review requires explicit confirmation before recording.</Text>
+          <Text style={styles.cardTitle}>Transactions</Text>
+          <Text style={styles.note}>Transaction tracking is not available yet.</Text>
         </View>
 
+        <OfflineSyncPanel />
         <FinancialCopilot />
       </ScrollView>
     </SafeAreaView>

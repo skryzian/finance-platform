@@ -16,6 +16,7 @@ from app.main import app
 def client():
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

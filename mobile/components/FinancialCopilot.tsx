@@ -13,6 +13,7 @@ export function FinancialCopilot() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [historyEnabled, setHistoryEnabled] = useState(false);
+  const [dataAccessEnabled, setDataAccessEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -31,10 +32,43 @@ export function FinancialCopilot() {
       setPassword('');
       const history = await fetch(`${apiUrl}/api/ai/history`, { headers: { Authorization: `Bearer ${body.access_token}` } });
       if (history.ok) setHistoryEnabled((await history.json()).enabled);
+      const dataAccess = await fetch(`${apiUrl}/api/ai/data-access`, { headers: { Authorization: `Bearer ${body.access_token}` } });
+      if (!dataAccess.ok) throw new Error('Could not load AI data-access settings.');
+      setDataAccessEnabled((await dataAccess.json()).enabled);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to sign in.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleDataAccess() {
+    if (!token) return;
+    const enabled = !dataAccessEnabled;
+    if (enabled) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Share financial data with AI?',
+          'Your question and read-only summaries of your own accounts, transactions, budgets, balance sheet, and sourced dated valuations will be sent to the configured OpenAI provider. Copilot cannot make changes or payments.',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Allow', onPress: () => resolve(true) },
+          ],
+        );
+      });
+      if (!confirmed) return;
+    }
+    try {
+      const response = await fetch(`${apiUrl}/api/ai/data-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) throw new Error('Could not update AI data-access settings.');
+      setDataAccessEnabled(enabled);
+      setConversationId(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not update AI data-access settings.');
     }
   }
 
@@ -90,7 +124,7 @@ export function FinancialCopilot() {
   return (
     <View style={styles.panel}>
       <Text style={styles.title}>Financial Copilot</Text>
-      <Text style={styles.subtitle}>Personal financial facts require verified application data. Your access token stays in memory.</Text>
+      <Text style={styles.subtitle}>Your access token stays in memory. Financial data is sent to the configured AI provider only after you explicitly enable read-only access.</Text>
       {!token ? (
         <View style={styles.form}>
           <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
@@ -99,15 +133,18 @@ export function FinancialCopilot() {
         </View>
       ) : (
         <>
+          <Pressable onPress={toggleDataAccess} style={styles.history}>
+            <Text style={styles.historyText}>{dataAccessEnabled ? '☑' : '□'} Share read-only finance data with AI</Text>
+          </Pressable>
           <Pressable onPress={toggleHistory} style={styles.history}><Text style={styles.historyText}>{historyEnabled ? '☑' : '□'} Save chat history</Text></Pressable>
           <ScrollView style={styles.messages} contentContainerStyle={styles.messageList}>
-            {messages.length === 0 && <Text style={styles.empty}>Ask about your finances. The assistant will say when personal data is unavailable.</Text>}
+            {messages.length === 0 && <Text style={styles.empty}>{dataAccessEnabled ? 'Copilot can read your own ledger and sourced dated valuations. It cannot execute financial actions.' : 'Enable read-only finance data access above before sending questions to the configured AI provider.'}</Text>}
             {messages.map((message, index) => <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}><Text style={message.role === 'user' ? styles.userText : styles.assistantText}>{message.content}</Text></View>)}
             {busy && <ActivityIndicator color="#0b7a61" />}
           </ScrollView>
           <View style={styles.composer}>
             <TextInput style={[styles.input, styles.question]} placeholder="Ask Financial Copilot" value={question} onChangeText={setQuestion} maxLength={4000} multiline />
-            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={busy || !question.trim()}><Text style={styles.buttonText}>Send</Text></Pressable>
+            <Pressable style={styles.sendButton} onPress={sendMessage} disabled={busy || !question.trim() || !dataAccessEnabled}><Text style={styles.buttonText}>Send</Text></Pressable>
           </View>
           <View style={styles.actions}>
             <Pressable onPress={() => { setMessages([]); setConversationId(null); }} style={styles.signOut}><Text style={styles.historyText}>New chat</Text></Pressable>

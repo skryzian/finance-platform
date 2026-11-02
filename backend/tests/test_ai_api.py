@@ -16,18 +16,21 @@ class FakeAIService:
         self.should_fail = should_fail
         self.closed = False
         self.should_timeout = False
+        self.context = None
 
     async def answer(self, prompt, context, max_output_tokens):
+        self.context = context
         if self.should_timeout:
             raise asyncio.TimeoutError()
         if self.should_fail:
             raise AIUnavailable("private provider error")
-        assert context["verified_context"] == {}
+        assert "accounts" in context["verified_context"]
+        assert context["source_references"]
         return AIAnswer(
             text="The connected application has no verified transaction data for this question.",
             provider_key="test-provider",
             model_name="test-model",
-            source_references=[],
+            source_references=context.get("source_references", []),
             input_tokens=12,
             output_tokens=14,
         )
@@ -66,6 +69,15 @@ def install_overrides(client, service=None, limiter=None):
     client.app.dependency_overrides[get_ai_rate_limiter] = lambda: limiter or FakeRateLimiter()
 
 
+def enable_ai_data_access(client, token):
+    response = client.put(
+        "/api/ai/data-access",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"enabled": True},
+    )
+    assert response.status_code == 200
+
+
 def test_chat_requires_authentication(client):
     install_overrides(client)
     response = client.post("/api/ai/chat", json={"question": "What is my net worth?"})
@@ -74,6 +86,7 @@ def test_chat_requires_authentication(client):
 
 def test_chat_returns_usage_without_saving_prompt_by_default(client):
     token = create_user(client, "copilot.private@example.com")
+    enable_ai_data_access(client, token)
     install_overrides(client)
 
     response = client.post(
@@ -97,6 +110,7 @@ def test_chat_returns_usage_without_saving_prompt_by_default(client):
 
 def test_rate_limited_request_is_not_sent_to_provider(client):
     token = create_user(client, "copilot.limited@example.com")
+    enable_ai_data_access(client, token)
     service = FakeAIService()
     install_overrides(client, service=service, limiter=FakeRateLimiter(permitted=False))
 
@@ -111,6 +125,7 @@ def test_rate_limited_request_is_not_sent_to_provider(client):
 
 def test_provider_failure_returns_sanitized_response_and_is_audited(client):
     token = create_user(client, "copilot.failure@example.com")
+    enable_ai_data_access(client, token)
     service = FakeAIService(should_fail=True)
     install_overrides(client, service=service)
 
@@ -131,6 +146,7 @@ def test_provider_failure_returns_sanitized_response_and_is_audited(client):
 
 def test_timeout_returns_sanitized_response_and_is_audited(client):
     token = create_user(client, "copilot.timeout@example.com")
+    enable_ai_data_access(client, token)
     service = FakeAIService()
     service.should_timeout = True
     install_overrides(client, service=service)
@@ -152,6 +168,7 @@ def test_timeout_returns_sanitized_response_and_is_audited(client):
 def test_chat_history_is_opt_in_and_user_scoped(client):
     first_token = create_user(client, "copilot.history.one@example.com")
     second_token = create_user(client, "copilot.history.two@example.com")
+    enable_ai_data_access(client, first_token)
     install_overrides(client)
     first_headers = {"Authorization": f"Bearer {first_token}"}
     second_headers = {"Authorization": f"Bearer {second_token}"}
@@ -184,3 +201,57 @@ def test_blank_and_oversized_questions_are_rejected(client, monkeypatch):
 
     assert client.post("/api/ai/chat", headers=headers, json={"question": "  "}).status_code == 422
     assert client.post("/api/ai/chat", headers=headers, json={"question": "a" * 21}).status_code == 413
+
+
+def test_ai_data_access_is_opt_in_and_revocable(client):
+    token = create_user(client, "copilot.consent@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    install_overrides(client)
+
+    assert client.get("/api/ai/data-access", headers=headers).json() == {"enabled": False}
+    response = client.post("/api/ai/chat", headers=headers, json={"question": "What is my balance?"})
+    assert response.status_code == 403
+    enable_ai_data_access(client, token)
+    assert client.put("/api/ai/data-access", headers=headers, json={"enabled": False}).json() == {"enabled": False}
+    response = client.post("/api/ai/chat", headers=headers, json={"question": "What is my balance?"})
+    assert response.status_code == 403
+
+
+def test_ai_retrieval_uses_only_the_opted_in_users_ledger(client):
+    first_token = create_user(client, "copilot.data.first@example.com")
+    second_token = create_user(client, "copilot.data.second@example.com")
+    first_headers = {"Authorization": f"Bearer {first_token}"}
+    for token, name, balance in (
+        (first_token, "Private first account", "150"),
+        (second_token, "Private second account", "9000"),
+    ):
+        response = client.post(
+            "/api/finance/accounts",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": name,
+                "account_type": "CASH",
+                "currency_code": "KES",
+                "opening_balance": balance,
+            },
+        )
+        assert response.status_code == 201
+    enable_ai_data_access(client, first_token)
+    service = FakeAIService()
+    install_overrides(client, service=service)
+
+    response = client.post(
+        "/api/ai/chat",
+        headers=first_headers,
+        json={"question": "Summarize my accounts."},
+    )
+    assert response.status_code == 200
+    context = service.context["verified_context"]
+    assert context["accounts"] == [{
+        "name": "Private first account",
+        "type": "CASH",
+        "currency": "KES",
+        "balance": "150.00000000",
+    }]
+    assert "Private second account" not in str(context)
+    assert response.json()["sources"]

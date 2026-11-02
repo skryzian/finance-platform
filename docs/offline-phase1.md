@@ -1,13 +1,13 @@
-# Offline-First Mobile: Phase 1
+# Offline-First Mobile: Local Storage and Synchronization
 
 ## Existing architecture analysis
 
 - Mobile is an Expo SDK 51 / React Native app with a static dashboard and the Financial Copilot UI.
 - Before this phase, mobile had no persistent database, repository layer, or cached financial records.
-- The existing backend has authenticated REST foundations, but full accounts/transactions APIs are not yet implemented. This Phase 1 local repository is intentionally independent of network endpoints.
+- The backend now provides an authoritative account/category/transaction ledger and authenticated push/pull sync endpoints. The mobile repository remains usable offline and synchronizes explicitly when the user signs in.
 - AI credentials remain server-only. This offline slice does not queue AI requests or include authentication tokens in SQLite.
 
-## Phase 1 architecture
+## Architecture
 
 ```text
 Expo screen / future feature hook
@@ -27,9 +27,9 @@ Repository writes go to local SQLite and return without making a network request
 
 ## Mobile database strategy
 
-The app uses Expo SQLite with SQLCipher enabled by its config plugin. A random 256-bit database key is generated once, stored in platform SecureStore, and applied before schema access. If SecureStore/key retrieval fails, initialization fails rather than opening an unencrypted database. Passwords and access tokens are not stored in this database.
+The app is configured to use Expo SQLite with SQLCipher enabled by its config plugin. A random 256-bit database key is generated once, stored in platform SecureStore, and applied before schema access. If SecureStore/key retrieval fails, initialization fails rather than opening an unencrypted database. Passwords and access tokens are not stored in this database. Device-level SQLCipher operation has not yet been verified; the UI must not claim encrypted storage is ready until a native build has completed this initialization.
 
-The versioned schema is in `mobile/src/database/localDatabase.ts`. Schema version 1 includes the financial cache tables plus a sync metadata cursor table. A `pending_operations` queue is not created in this phase; queue processing belongs to Phase 2.
+The versioned schema is in `mobile/src/database/localDatabase.ts`. Schema version 2 includes the financial cache tables, sync metadata, transfer destinations, and persistent conflict snapshots. Local sync versions track server versions; local edits are tracked separately with `local_updated_at` and `sync_status`.
 
 ## Repository layer
 
@@ -42,7 +42,7 @@ The versioned schema is in `mobile/src/database/localDatabase.ts`. Schema versio
 - Read and increment the local update counter
 - Clear one user's device data
 
-Creating a manual transaction means the user explicitly pressed the local save action; it is marked `CONFIRMED` and `LOCAL_ONLY`. SMS confirmation is not implemented in this phase. Transaction deletion uses a tombstone so a future push sync can represent deletion rather than forgetting it.
+Creating a manual transaction means the user explicitly pressed the local save action; it is marked `CONFIRMED` and `LOCAL_ONLY`. SMS confirmation is not implemented. Account deletion uses a tombstone and synchronizes as server-side archival. A synced ledger transaction is immutable; local edits/deletes produce a conflict, and corrections should use a reversal.
 
 Use `useLocalFinanceRepository()` inside a component below the app's `SQLiteProvider`. Resolve the local user ID after authentication and pass that ID to every repository call. `remoteUserId` can be mapped through `upsertUserProfile`; for a device-only identity, keep and pass the generated/input local `id` on later calls. Do not use one global hard-coded user ID.
 
@@ -51,8 +51,11 @@ Use `useLocalFinanceRepository()` inside a component below the app's `SQLiteProv
 - Financial fields use `TEXT` decimal representations, avoiding SQLite/JavaScript binary float arithmetic.
 - Foreign keys are enabled, and records are filtered/scoped by the local user ID.
 - Rows include `sync_status`, `sync_version`, `local_updated_at`, `server_updated_at`, `last_synced_at`, and tombstone fields where they may later synchronize.
-- There is no push/pull API, idempotency handling on the server, conflict UI, queue, connectivity detection, or retries in Phase 1. Do not mark local-only changes as synchronized.
-- Cache freshness is captured for market-data payloads, but no market data provider is connected.
+- `POST /api/finance/sync/push` upserts versioned accounts/categories and idempotently appends transactions. `GET /api/finance/sync/pull` returns a per-user monotonic cursor and ordered events.
+- Account/category updates use optimistic server versions. Conflicts preserve local data and store the server snapshot for explicit “use server” or “keep local” resolution.
+- Transaction operation IDs are stable idempotency keys. Server ledger entries cannot be edited or deleted; a conflicting local transaction must be replaced with a reversal workflow.
+- Sync is user initiated; background scheduling, automatic connectivity detection, retry queues, budgets/assets sync, and transaction-level local reversal creation are not implemented.
+- Historical market prices and FX rates can be refreshed through authenticated server APIs. This mobile sync phase does not yet cache or synchronize those observations to the device.
 
 ## Dependencies and configuration
 
@@ -81,8 +84,8 @@ On an Android dev build:
 6. Call `listTransactions` with a different user ID; it must not return the first user's rows.
 7. Edit then delete a transaction; it remains a local tombstone with `LOCAL_ONLY` status and is absent from normal list results.
 
-The current environment does not have Node/npm or Android build tools available, so a native app build and device-level SQLite/SQLCipher smoke test could not be run here. Backend tests do not validate Expo native modules.
+Mobile TypeScript validation passes after installing the declared dependencies. An Android/iOS native build and device-level SQLite/SQLCipher smoke test remain unverified; Expo Go does not include the configured SQLCipher binary.
 
-## Deferred phases
+## Remaining mobile sync work
 
-Phase 2 adds a durable operation queue and idempotent push API. Phase 3 adds incremental pull and conflict resolution. Phase 4 adds connectivity/background sync. Phase 5 adds SMS parsing/review against this repository. Phase 6 adds offline deterministic calculations and optional queued AI requests.
+The current sync covers accounts, categories, and immutable transactions. Add durable background scheduling, bounded retries, budgets/assets synchronization, and native SQLCipher device tests only with explicit product and operational requirements. External market/FX history remains fetched through the authenticated web/server APIs; it is not synchronized to the mobile cache yet.

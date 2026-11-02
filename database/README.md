@@ -1,10 +1,18 @@
 # Database design
 
-This project uses PostgreSQL with SQLAlchemy ORM and Alembic migrations.
+This project uses PostgreSQL with SQLAlchemy ORM and Alembic migrations. The lists below distinguish planned finance-domain tables from tables currently created by backend migrations.
+
+## Implemented server tables
+
+The current migrations create users and sessions, country/currency/exchange reference data, market/provider catalogs, watchlists, alerts, opportunities, AI records, the financial ledger, sync state/events, daily FX observations, market-price history, user AI data-access consent, notification preferences/devices/feed/delivery outbox, and M-Pesa mappings/payment requests. Revisions `20261102_000004` through `20261102_000007` add the ledger, offline sync, sourced valuations, and Phase 6 integrations. See `backend/alembic/versions/` for the authoritative server schema.
+
+## Remaining planned finance-domain tables
+
+Investment holdings/trades, subscriptions, goals, net-worth snapshots, and import/reconciliation records remain planned. The mobile schema contains additional local cache tables; their presence does not imply server synchronization.
 
 ## Core entities
 
-- users
+- users (including per-user AI data-access consent)
 - sessions
 - accounts
 - transactions
@@ -13,12 +21,22 @@ This project uses PostgreSQL with SQLAlchemy ORM and Alembic migrations.
 - budget_items
 - assets
 - liabilities
+- exchange_rate_observations
+- market_price_history
+- user_sync_state
+- sync_events
 - investments
 - investment_transactions
 - subscriptions
 - financial_goals
 - net_worth_snapshots
 - notifications
+- notification_preferences
+- push_devices
+- notification_deliveries
+- mpesa_account_mappings
+- mpesa_c2b_payments
+- mpesa_stk_requests
 - audit_logs
 - sms_messages
 - pending_transactions
@@ -67,9 +85,10 @@ investments
 ## Design principles
 
 - All monetary values use decimals with validation.
-- All updates to balances happen inside a database transaction.
-- Transaction statuses are explicit and audited.
-- Pending transactions cannot impact official balances until confirmation.
+- Account balances are derived from opening balances and immutable ledger entries, not mutable balance columns.
+- Income, expense, transfer, and reversal records are validated transactionally; transfers are currency-matched and balance-neutral in aggregate.
+- Transaction writes require stable per-user idempotency keys; corrections use reversals rather than modifying posted ledger entries.
+- Dated FX and market observations persist provider, effective date, retrieval time, and historical data state. Reports remain currency-scoped unless a sourced conversion is explicitly implemented.
 - Profile images are stored outside PostgreSQL via a storage abstraction.
 
 ## Local development

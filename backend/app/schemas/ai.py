@@ -22,6 +22,10 @@ class AIHistoryPreference(BaseModel):
     enabled: bool
 
 
+class AIDataAccessPreference(BaseModel):
+    enabled: bool
+
+
 class AIConversationOut(BaseModel):
     id: int
     title: str

@@ -1,5 +1,7 @@
 # OpenAI Financial Copilot: Phase 1
 
+> **Current status:** The original phase-1 foundation below has since been extended. The current consent and finance-data retrieval behavior is documented in [phase6-integrations.md](./phase6-integrations.md).
+
 ## Existing architecture and AI gap analysis
 
 - The app already had FastAPI, JWT auth, PostgreSQL/SQLAlchemy, Redis, Next.js, and Expo entry points.
@@ -90,6 +92,6 @@ python -m pytest -q
 
 Run the `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_ENABLED` values only as backend secrets/configuration. Never add them to `web/.env*`, `mobile`, or source control. The new migration runs through the existing Docker backend startup command (`alembic upgrade head`). The Redis service must be available for AI request quotas.
 
-## Deferred phases
+## Phase-1 deferred scope (historical)
 
 This foundation does not yet include finance-data retrieval tools, actual account/transaction/portfolio calculations, AI SMS classification, structured news/opportunity analysis, administrator UI, model/provider administration page, or mobile conversation-history browser. These require existing authoritative data services and are intentionally not simulated here.

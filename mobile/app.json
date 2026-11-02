@@ -12,13 +12,14 @@
           "useSQLCipher": true
         }
       ],
+      "expo-notifications",
       "expo-secure-store"
     ],
     "packagerOpts": {
       "sourceExts": ["js", "jsx", "ts", "tsx"]
     },
     "android": {
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "READ_SMS", "POST_NOTIFICATIONS"],
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "POST_NOTIFICATIONS"],
       "package": "com.financeplatform.mobile"
     },
     "ios": {

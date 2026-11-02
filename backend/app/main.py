@@ -7,18 +7,19 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.intelligence import router as intelligence_router
 from app.api.routes.international import router as international_router
+from app.api.routes.finance import router as finance_router
 from app.api.routes.markets import router as markets_router
+from app.api.routes.notifications import router as notifications_router
+from app.api.routes.mpesa import router as mpesa_router
 from app.api.routes.profile import router as profile_router
 from app.api.routes.watchlists import router as watchlists_router
 from app.core.config import settings
-from app.db.database import Base, engine
 import app.models
 from app.seed.reference_data import seed_reference_data
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)
     seed_reference_data()
     yield
 
@@ -36,7 +37,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "app": settings.app_name, "environment": settings.app_env}
+    return {"status": "ok", "app": settings.app_name}
 
 
 app.include_router(auth_router)
@@ -46,3 +47,6 @@ app.include_router(international_router)
 app.include_router(markets_router)
 app.include_router(watchlists_router)
 app.include_router(intelligence_router)
+app.include_router(finance_router)
+app.include_router(notifications_router)
+app.include_router(mpesa_router)

@@ -1,17 +1,29 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import bearer_scheme, get_current_user, get_db
 from app.core.config import settings
-from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    hash_refresh_token,
+    verify_password,
+    verify_refresh_token,
+)
 from app.models.country import Country
 from app.models.currency import Currency
 from app.models.session import Session as AuthSession
+from app.models.sync import UserSyncState
 from app.models.user import User
-from app.schemas.user import ProfileUpdate, TokenPair, UserCreate, UserLogin, UserOut
+from app.schemas.user import ProfileUpdate, RefreshTokenRequest, TokenPair, UserCreate, UserLogin, UserOut
+from app.services.notifications import enqueue_notification
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -53,44 +65,119 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
         ai_history_enabled=settings.ai_history_enabled_by_default,
     )
     db.add(user)
+    db.flush()
+    db.add(UserSyncState(user_id=user.id, version=0))
     db.commit()
     db.refresh(user)
     return user
 
 
 @router.post("/login", response_model=TokenPair)
-def login_user(payload: UserLogin, db: Session = Depends(get_db)):
+def login_user(payload: UserLogin, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email.lower()).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
-
-    refresh_hash = hash_password(refresh_token)
-    db.add(
-        AuthSession(
-            user_id=user.id,
-            refresh_token_hash=refresh_hash,
-            user_agent="unknown",
-            ip_address="unknown",
-            expires_at=datetime.now(timezone.utc).replace(microsecond=0),
-        )
+    now = datetime.now(timezone.utc)
+    session = AuthSession(
+        user_id=user.id,
+        refresh_token_hash="pending",
+        user_agent="unknown",
+        ip_address="unknown",
+        expires_at=now + timedelta(days=7),
     )
+    db.add(session)
+    db.flush()
+    refresh_token = create_refresh_token(str(user.id), session.id)
+    session.refresh_token_hash = hash_refresh_token(refresh_token)
     user.last_login = datetime.now(timezone.utc)
     db.commit()
+    enqueue_notification(
+        db,
+        user_id=user.id,
+        event_type="SECURITY",
+        event_key=f"login:{session.id}",
+        title="New sign-in",
+        body="Your Finance Platform account was signed in to.",
+        background_tasks=background_tasks,
+    )
 
+    access_token = create_access_token(str(user.id), session.id)
     return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenPair)
-def refresh_token(token: str, db: Session = Depends(get_db)):
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Refresh token flow is scaffolded for Phase 1")
+def refresh_tokens(payload: RefreshTokenRequest, db: Session = Depends(get_db)):
+    try:
+        claims = decode_token(payload.refresh_token, settings.jwt_refresh_secret)
+        user_id = int(claims["sub"])
+        session_id = int(claims["sid"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") from exc
+
+    if claims.get("type") != "refresh":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    now = datetime.now(timezone.utc)
+    session = db.query(AuthSession).filter(
+        AuthSession.id == session_id,
+        AuthSession.user_id == user_id,
+        AuthSession.revoked_at.is_(None),
+        AuthSession.expires_at > now,
+    ).first()
+    if session is None or not verify_refresh_token(payload.refresh_token, session.refresh_token_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    rotated_refresh_token = create_refresh_token(str(user.id), session.id)
+    result = db.execute(
+        update(AuthSession)
+        .where(
+            AuthSession.id == session.id,
+            AuthSession.refresh_token_hash == session.refresh_token_hash,
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > now,
+        )
+        .values(
+            refresh_token_hash=hash_refresh_token(rotated_refresh_token),
+            expires_at=now + timedelta(days=7),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+    db.commit()
+
+    return TokenPair(
+        access_token=create_access_token(str(user.id), session.id),
+        refresh_token=rotated_refresh_token,
+    )
 
 
 @router.post("/logout")
-def logout_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    db.query(AuthSession).filter(AuthSession.user_id == current_user.id).delete()
+def logout_user(
+    current_user: User = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    try:
+        claims = decode_token(credentials.credentials, settings.jwt_secret)
+        session_id = int(claims["sid"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+    session = db.query(AuthSession).filter(
+        AuthSession.id == session_id,
+        AuthSession.user_id == current_user.id,
+        AuthSession.revoked_at.is_(None),
+    ).first()
+    if session is not None:
+        session.revoked_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Logged out successfully"}
 

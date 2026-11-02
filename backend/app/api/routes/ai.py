@@ -20,11 +20,13 @@ from app.schemas.ai import (
     AIChatResponse,
     AIConversationDetail,
     AIConversationOut,
+    AIDataAccessPreference,
     AIHistoryPreference,
     AIMessageOut,
     AIUsageSummary,
 )
 from app.services.ai_service import create_ai_service
+from app.services.ai_retrieval import build_verified_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ai", tags=["financial copilot"])
@@ -112,6 +114,22 @@ def update_history_preference(
     return {"enabled": current_user.ai_history_enabled}
 
 
+@router.get("/data-access")
+def get_data_access_preference(current_user: User = Depends(get_current_user)):
+    return {"enabled": current_user.ai_data_access_enabled}
+
+
+@router.put("/data-access")
+def update_data_access_preference(
+    payload: AIDataAccessPreference,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.ai_data_access_enabled = payload.enabled
+    db.commit()
+    return {"enabled": current_user.ai_data_access_enabled}
+
+
 @router.post("/chat", response_model=AIChatResponse)
 async def chat(
     payload: AIChatRequest,
@@ -125,6 +143,11 @@ async def chat(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Question cannot be blank")
     if len(question) > settings.ai_max_prompt_characters:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Question exceeds the configured size limit")
+    if not current_user.ai_data_access_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Enable financial-data access before sending a question to the configured AI provider",
+        )
     if payload.conversation_id is not None and not current_user.ai_history_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enable chat history before continuing a saved conversation")
 
@@ -169,6 +192,7 @@ async def chat(
             for message in reversed(previous)
         ]
 
+    verified_context, source_references = build_verified_context(db, current_user.id)
     usage = AIUsage(
         request_id=str(uuid4()),
         user_id=current_user.id,
@@ -184,7 +208,11 @@ async def chat(
         answer = await asyncio.wait_for(
             ai_service.answer(
                 question,
-                {"verified_context": {}, "conversation_history": conversation_history},
+                {
+                    "verified_context": verified_context,
+                    "conversation_history": conversation_history,
+                    "source_references": source_references,
+                },
                 max_output_tokens=settings.ai_max_response_tokens,
             ),
             timeout=settings.ai_request_timeout_seconds + 1,

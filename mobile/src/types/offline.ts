@@ -40,19 +40,24 @@ export type LocalAccount = LocalAccountInput & {
 export type LocalCategory = {
   id: string;
   userId: string;
+  remoteId: string | null;
   name: string;
   categoryType: 'INCOME' | 'EXPENSE';
   parentId: string | null;
   syncStatus: LocalSyncStatus;
+  syncVersion: number;
   localUpdatedAt: string;
+  serverUpdatedAt: string | null;
+  lastSyncedAt: string | null;
 };
 
 export type LocalTransactionInput = {
   accountId?: string | null;
+  transferAccountId?: string | null;
   categoryId?: string | null;
   amount: string;
   currencyCode: string;
-  transactionType: string;
+  transactionType: 'INCOME' | 'EXPENSE' | 'TRANSFER';
   description: string;
   merchant?: string | null;
   reference?: string | null;
@@ -80,4 +85,38 @@ export type LocalSyncMetadata = {
   serverVersion: number;
   lastSyncAt: string | null;
   localUpdateCounter: number;
+};
+
+export type LocalSyncPushResult = {
+  entity_type: 'account' | 'category' | 'transaction';
+  local_id: string;
+  status: 'APPLIED' | 'CONFLICT' | 'REJECTED';
+  remote_id?: number | null;
+  server_version?: number | null;
+  server_data?: Record<string, unknown> | null;
+  message?: string | null;
+};
+
+export type LocalSyncEvent = {
+  version: number;
+  entity_type: 'account' | 'category' | 'transaction';
+  entity_id: string;
+  operation: 'UPSERT' | 'DELETE';
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type LocalSyncChanges = {
+  accounts: Array<LocalAccount & { isDeleted: boolean }>;
+  categories: Array<LocalCategory & { isDeleted: boolean }>;
+  transactions: Array<LocalTransaction & { isDeleted: boolean }>;
+};
+
+export type LocalSyncConflict = {
+  id: string;
+  entityType: 'account' | 'category' | 'transaction';
+  entityId: string;
+  serverVersion: number | null;
+  serverPayload: Record<string, unknown>;
+  createdAt: string;
 };

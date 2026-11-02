@@ -34,7 +34,13 @@ class NewsItem:
 class MarketDataProvider(Protocol):
     provider_key: str
 
-    async def get_quote(self, symbol: str, exchange: str | None = None) -> MarketQuote:
+    async def get_quote(
+        self,
+        symbol: str,
+        exchange: str | None = None,
+        asset_type: str = "EQUITY",
+        currency_code: str = "USD",
+    ) -> MarketQuote:
         """Return a sourced quote or raise ProviderUnavailable."""
         ...
 

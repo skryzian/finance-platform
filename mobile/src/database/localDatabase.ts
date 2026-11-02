@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 const DATABASE_KEY_NAME = 'finance-platform.sqlite-key.v1';
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 const MIGRATION_1 = `
 CREATE TABLE users (
@@ -289,6 +289,22 @@ CREATE TABLE sync_metadata (
 );
 `;
 
+const MIGRATION_2 = `
+ALTER TABLE transactions
+  ADD COLUMN transfer_account_id TEXT REFERENCES accounts(id) ON DELETE RESTRICT;
+
+CREATE TABLE sync_conflicts (
+  id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  server_version INTEGER,
+  server_payload TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, entity_type, entity_id)
+);
+`;
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -321,6 +337,12 @@ export async function initializeLocalDatabase(database: SQLiteDatabase): Promise
     await database.withTransactionAsync(async () => {
       await database.execAsync(MIGRATION_1);
       await database.execAsync('PRAGMA user_version = 1;');
+    });
+  }
+  if (version < 2) {
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(MIGRATION_2);
+      await database.execAsync('PRAGMA user_version = 2;');
     });
   }
 }

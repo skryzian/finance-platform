@@ -24,6 +24,7 @@ class User(Base):
     time_format: Mapped[str] = mapped_column(String(8), default="24h", nullable=False)
     number_format: Mapped[str] = mapped_column(String(32), default="#,##0.00", nullable=False)
     ai_history_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    ai_data_access_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     profile_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     profile_thumbnail_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

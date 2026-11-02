@@ -13,6 +13,18 @@ from app.models.opportunity import Opportunity, OpportunityReview, OpportunitySo
 from app.models.session import Session
 from app.models.user import User
 from app.models.watchlist import Watchlist, WatchlistItem
+from app.models.finance import Account, Budget, Category, FinancialAsset, Liability, Transaction
+from app.models.sync import SyncEvent, UserSyncState
+from app.models.valuation import ExchangeRateObservation, MarketPriceHistory
+from app.models.integrations import (
+    MpesaAccountMapping,
+    MpesaC2BPayment,
+    MpesaStkRequest,
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
+    PushDevice,
+)
 
 __all__ = [
 	"User", "Session", "Country", "Currency", "ExchangeRate", "Exchange",
@@ -20,4 +32,10 @@ __all__ = [
 	"Alert", "AlertDelivery", "Opportunity", "OpportunitySource", "OpportunityReview", "DataQualityRecord",
 	"AIInteraction", "AIToolCall",
 	"AIConversation", "AIMessage", "AIUsage",
+	"Account", "Category", "Transaction", "Budget", "FinancialAsset", "Liability",
+	"SyncEvent", "UserSyncState",
+	"ExchangeRateObservation", "MarketPriceHistory",
+	"NotificationPreference", "PushDevice", "Notification", "NotificationDelivery",
+	"MpesaAccountMapping", "MpesaStkRequest",
+	"MpesaC2BPayment",
 ]
